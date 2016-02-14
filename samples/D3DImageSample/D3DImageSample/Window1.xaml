@@ -5,7 +5,10 @@
   <Window.Background>
     <ImageBrush ImageSource="Forest.jpg" />
   </Window.Background>
-  <Grid Background="{StaticResource RotatingTriangleScene}" />
+    <Viewbox>
+         <Grid Width="3840" Height="2160" Background="{StaticResource RotatingTriangleScene}" />
+    </Viewbox>
+ 
 </Window>
 
 <!--<Window x:Class="D3DImageSample.Window1"

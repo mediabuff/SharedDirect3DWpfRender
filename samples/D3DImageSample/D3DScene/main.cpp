@@ -3,8 +3,10 @@
 #include <d3dx9.h>
 #include <strsafe.h>
 
-#define WIDTH 300
-#define HEIGHT 300
+#define WIDTH 3840
+#define HEIGHT 2160
+#define SHARED_TARGET_FORMAT (D3DFORMAT)22
+#define SHARED_HANDLE (HANDLE)-2147454782;
 
 typedef HRESULT (WINAPI *DIRECT3DCREATE9EX)(UINT SDKVersion, IDirect3D9Ex**);
 
@@ -15,7 +17,6 @@ LPDIRECT3D9EX           g_pD3DEx        = NULL;
 LPDIRECT3DDEVICE9       g_pd3dDevice    = NULL;
 LPDIRECT3DDEVICE9EX     g_pd3dDeviceEx  = NULL;
 LPDIRECT3DSURFACE9      g_pd3dSurface   = NULL;
-LPDIRECT3DVERTEXBUFFER9 g_pVB           = NULL;
 
 
 LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -27,40 +28,7 @@ LRESULT WINAPI MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 WNDCLASSEX g_wc = { sizeof(WNDCLASSEX), CS_CLASSDC, MsgProc, 0L, 0L,
       GetModuleHandle(NULL), NULL, NULL, NULL, NULL, L"Foo", NULL };
 
-
-struct CUSTOMVERTEX
-{
-    FLOAT x, y, z;
-    DWORD color;
-};
-
-
 #define D3DFVF_CUSTOMVERTEX (D3DFVF_XYZ|D3DFVF_DIFFUSE)
-
-
-VOID SetupMatrices()
-{
-    // Set up rotation matrix
-    D3DXMATRIXA16 matWorld;
-    UINT  iTime  = timeGetTime() % 1000;
-    FLOAT fAngle = iTime * (2.0f * D3DX_PI) / 1000.0f;
-    D3DXMatrixRotationY(&matWorld, fAngle);
-    g_pd3dDevice->SetTransform(D3DTS_WORLD, &matWorld);
-
-    // Set up view matrix
-    D3DXVECTOR3 vEyePt(0.0f, 3.0f,-4.0f);
-    D3DXVECTOR3 vLookatPt(0.0f, 0.0f, 0.0f);
-    D3DXVECTOR3 vUpVec(0.0f, 1.0f, 0.0f);
-    D3DXMATRIXA16 matView;
-    D3DXMatrixLookAtLH(&matView, &vEyePt, &vLookatPt, &vUpVec);
-    g_pd3dDevice->SetTransform(D3DTS_VIEW, &matView);
-
-    // Set up projection matrix
-    D3DXMATRIXA16 matProj;
-    D3DXMatrixPerspectiveFovLH(&matProj, D3DX_PI/4, 1.0f, 1.0f, 100.0f);
-    g_pd3dDevice->SetTransform(D3DTS_PROJECTION, &matProj);
-}
-
 
 DWORD GetVertexProcessingCaps()
 {
@@ -133,14 +101,6 @@ void InitializeD3DEx(HWND hWnd, D3DPRESENT_PARAMETERS d3dpp)
 
 extern "C" __declspec(dllexport) LPVOID WINAPI InitializeScene()
 {
-    // vertices for geometry
-    CUSTOMVERTEX g_Vertices[] =
-    {
-        { -1.0f,-1.0f, 0.0f, 0xffff0000, },
-        {  1.0f,-1.0f, 0.0f, 0xff0000ff, },
-        {  0.0f, 1.0f, 0.0f, 0xC0ffffff, },
-    };
-
     // set up the structure used to create the D3DDevice
     D3DPRESENT_PARAMETERS d3dpp;
     ZeroMemory(&d3dpp, sizeof(d3dpp));
@@ -176,15 +136,19 @@ extern "C" __declspec(dllexport) LPVOID WINAPI InitializeScene()
         InitializeD3D(hWnd, d3dpp);
     }
 
+	HANDLE sharedHandle = SHARED_HANDLE;
+
     // create and set the render target surface
     // it should be lockable on XP and nonlockable on Vista
-    if (FAILED(g_pd3dDevice->CreateRenderTarget(WIDTH, HEIGHT, 
-        D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, 
-        !g_is9Ex, // lockable
-        &g_pd3dSurface, NULL)))
+	HRESULT hr = g_pd3dDevice->CreateRenderTarget(WIDTH, HEIGHT,
+		SHARED_TARGET_FORMAT, D3DMULTISAMPLE_NONE, 0,
+		TRUE, // lockable
+		&g_pd3dSurface, &sharedHandle);
+    if (FAILED(hr))
     {
         return NULL;
     }
+
     g_pd3dDevice->SetRenderTarget(0, g_pd3dSurface);
 
     // turn off culling to view both sides of the triangle
@@ -193,45 +157,23 @@ extern "C" __declspec(dllexport) LPVOID WINAPI InitializeScene()
     // turn off D3D lighting to use vertex colors
     g_pd3dDevice->SetRenderState(D3DRS_LIGHTING, FALSE);
 
-    // create vertex buffer
-    if (FAILED(g_pd3dDevice->CreateVertexBuffer(3*sizeof(CUSTOMVERTEX),
-        0, D3DFVF_CUSTOMVERTEX, D3DPOOL_DEFAULT, &g_pVB, NULL)))
-    {
-        return NULL;
-    }
-
-    // fill vertex buffer
-    VOID* pVertices;
-    if (FAILED(g_pVB->Lock(0, sizeof(g_Vertices), (void**)&pVertices, 0)))
-    {    
-        return NULL;
-    }
-    memcpy(pVertices, g_Vertices, sizeof(g_Vertices));
-    g_pVB->Unlock();
-
     return g_pd3dSurface;
 }
 
 
 extern "C" __declspec(dllexport) void WINAPI RenderScene(LPSIZE pSize)
 {
-    // clear the surface to transparent
-    g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 0, 0), 1.0f, 0);
+  //  // clear the surface to transparent
+  //  g_pd3dDevice->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_ARGB(0, 0, 0, 0), 1.0f, 0);
 
-    // render the scene
-    if (SUCCEEDED(g_pd3dDevice->BeginScene()))
-    {
-        // setup the world, view, and projection matrices
-        SetupMatrices();
+  //  // render the scene
+  //  if (SUCCEEDED(g_pd3dDevice->BeginScene()))
+  //  {
+		//g_pd3dDevice->ColorFill(g_pd3dSurface, NULL, D3DCOLOR_ARGB(40, 20, 20, 20));
 
-        // render the vertex buffer contents
-        g_pd3dDevice->SetStreamSource(0, g_pVB, 0, sizeof(CUSTOMVERTEX));
-        g_pd3dDevice->SetFVF(D3DFVF_CUSTOMVERTEX);
-        g_pd3dDevice->DrawPrimitive(D3DPT_TRIANGLESTRIP, 0, 1);
-
-        // end the scene
-        g_pd3dDevice->EndScene();
-    }
+  //      // end the scene
+  //      g_pd3dDevice->EndScene();
+  //  }
 
     // return the full size of the surface
     pSize->cx = WIDTH;
@@ -242,9 +184,6 @@ extern "C" __declspec(dllexport) void WINAPI RenderScene(LPSIZE pSize)
 extern "C" __declspec(dllexport) VOID WINAPI ReleaseScene()
 {
     UnregisterClass(NULL, g_wc.hInstance);
-
-    if (g_pVB != NULL)
-        g_pVB->Release();
 
     if (g_pd3dDevice != NULL)
         g_pd3dDevice->Release();
