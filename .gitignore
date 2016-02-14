@@ -234,3 +234,6 @@ _Pvt_Extensions
 
 # FAKE - F# Make
 .fake/
+samples/D3DImageSample/D3DImageSample/D3DScene.dll
+samples/D3DImageSample/D3DImageSample/D3DScene.exp
+samples/D3DImageSample/D3DImageSample/D3DScene.lib
